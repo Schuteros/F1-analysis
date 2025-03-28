@@ -159,21 +159,33 @@ def problem_analysis(first_car_analysis, second_car_analysis):
     return full_car_analysis
 
 
+
 def get_average_telemetry(car_laps):
     """
     Compute the average telemetry data for all laps and return it as a DataFrame.
+    Also integrates the position data from the fastest lap with the telemetry data.
     """
     all_laps_data = []  # Store telemetry data per lap
-
-    for _, lap in car_laps.iterrows():  # Iterate through each lap
+    
+    # Iterate through each lap and get telemetry data
+    for _, lap in car_laps.iterrows():
         telemetry = lap.get_car_data().add_distance()  # Get telemetry for this lap
-
+        print(telemetry)  # Check the columns in telemetry to identify position data
+        
         if telemetry.empty:
             continue  # Skip empty laps
 
         # Convert boolean columns to integers
         if "Brake" in telemetry.columns:
             telemetry["Brake"] = telemetry["Brake"].astype(int)
+            
+        if "DRS" in telemetry.columns:
+            for _, datapoint in telemetry.iterrows():
+                if datapoint["DRS"] > 10:
+                    datapoint["DRS"] = 1
+                    print("DRS ON")
+                else:
+                    datapoint["DRS"] = 0
 
         # Round each distance to the nearest 0.5m bin
         telemetry["DistanceBin"] = (telemetry["Distance"] / 0.5).round() * 0.5
@@ -194,14 +206,45 @@ def get_average_telemetry(car_laps):
     # Combine all lap data and compute the final average per distance bin
     combined_telemetry = pd.concat(all_laps_data).groupby("DistanceBin", as_index=False).mean()
 
-    # Drop bins that have all NaN values
-    combined_telemetry = combined_telemetry.dropna(how="all")
-
     # Drop SessionTime and Time columns if they exist
     combined_telemetry = combined_telemetry.drop(columns=["SessionTime", "Time"], errors='ignore')
 
+    # Ensure 'DistanceBin' is set as index for proper merging later
+    combined_telemetry.set_index('DistanceBin', inplace=True)
+
+    # Get the position data from the fastest lap
+    pos_data = car_laps.pick_fastest().get_pos_data()
+    if not pd.api.types.is_timedelta64_dtype(pos_data['SessionTime']):
+        pos_data['SessionTime'] = pd.to_timedelta(pos_data['SessionTime'])
+    # Ensure the position data is indexed by 'SessionTime' for merging
+    pos_data = pos_data.set_index('SessionTime')
+    
+    # Now retrieve the telemetry from the fastest lap
+    fastest_lap_telemetry = car_laps.pick_fastest().get_car_data().add_distance()
+    if not pd.api.types.is_timedelta64_dtype(fastest_lap_telemetry['SessionTime']):
+        fastest_lap_telemetry['SessionTime'] = pd.to_timedelta(fastest_lap_telemetry['SessionTime'])
+    fastest_lap_telemetry = fastest_lap_telemetry.set_index('SessionTime')
+
+    # Merge the position data with the telemetry data using SessionTime (method='nearest' for alignment)
+    merged_data = pd.merge_asof(fastest_lap_telemetry, pos_data[['X', 'Y']], left_index=True, right_index=True, direction='nearest')
+
+    # Now compute DistanceBin for the merged data based on telemetry Distance
+    merged_data["DistanceBin"] = (merged_data["Distance"] / 0.5).round() * 0.5
+
+    # Merge the combined telemetry with the merged data from the fastest lap
+    final_telemetry = pd.merge(combined_telemetry, merged_data[['DistanceBin', 'X', 'Y']], on='DistanceBin', how='left')
+
+    # Drop rows where X or Y is NaN (i.e., no valid position data)
+    final_telemetry = final_telemetry.dropna(subset=['X', 'Y'])
+
+    print(final_telemetry)  # Debugging to check if the merge worked correctly
+
     # Return the cleaned and averaged telemetry data as a DataFrame
-    return combined_telemetry
+    return final_telemetry
+
+
+
+
 
 def synchronize_speed_data(distance, speed, avg_speed_distance, avg_speed):
     """
@@ -342,15 +385,71 @@ def detect_slow_subsections(car_laps, problematic_sections, midpoints, all_laps)
     return new_problematic_sections
 
 
-HIGH_BRAKE_THRESHOLD = 0.8
+def visualize_subsection(x, y):
+    """
+    Visualizes the entire path from the given x and y coordinates in the x-y plane.
+    
+    Arguments:
+    x -- List of x coordinates
+    y -- List of y coordinates
+    """
+    plt.figure(figsize=(8, 6))
+    plt.plot(x, y, label="Path Subsection", color='blue', linestyle='-', marker='o')
+
+    plt.xlabel("X Coordinate")
+    plt.ylabel("Y Coordinate")
+    plt.title("Visualization of Path Subsection")
+    plt.legend()
+
+    # Display the plot
+    plt.grid(True)
+    plt.show()
+
+
+def calculate_curvature(x, y):
+    """
+    Function to calculate curvature using 3 consecutive points. The scale factor is used to adjust the input coordinates.
+    """
+    curvatures = []
+    print(f"Total number of points: {len(x)}")  # Print the length of the x and y data
+    
+    for i in range(1, len(x) - 1):
+        # Get the three consecutive points, scaling the x and y coordinates
+        x1, y1 = x[i-1], y[i-1] 
+        x2, y2 = x[i], y[i]
+        x3, y3 = x[i+1], y[i+1]
+        
+        # Calculate the lengths of the sides of the triangle
+        L1 = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        L2 = np.sqrt((x3 - x2)**2 + (y3 - y2)**2)
+        L3 = np.sqrt((x3 - x1)**2 + (y3 - y1)**2)
+        
+        # Calculate the area of the triangle
+        area = 0.5 * abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+        
+        # Calculate the curvature
+        if L1 * L2 * L3 != 0:  # Avoid division by zero
+            curvature = (2 * area) / (L1 * L2 * L3)
+        else:
+            curvature = 0
+        
+        curvatures.append(float(curvature))
+
+
+    return curvatures
+
+
+HIGH_BRAKE_THRESHOLD = 0.6
 HIGH_THROTTLE_THRESHOLD = 0.8
 HIGH_SPEED_THRESHOLD = 290
 LOW_THROTTLE_THRESHOLD = 0.2
 LOW_BRAKE_THRESHOLD = 0.2
+CURVATURE_THRESHOLD = 0.002
+DRS_THRESHOLD = 0.15
 
 
-def find_general_problems(problematic_sections, car_laps):
-    telemetry = get_average_telemetry(car_laps)
+def find_general_problems(problematic_sections, car_average_telemetry):
+    telemetry = car_average_telemetry
     problem_dict = {
         "Braking": [],
         "Acceleration": [],
@@ -359,34 +458,41 @@ def find_general_problems(problematic_sections, car_laps):
         "Straight-Line Speed Issue": [],
         "Other": []
     }
+
     
     for _, section in problematic_sections.iterrows():
         if section["Problem"] == "Car":
             for subsection in section["Subsections"]:
                 start, end = subsection
                 problem_data = telemetry[(telemetry["DistanceBin"] >= start) & (telemetry["DistanceBin"] <= end)]
+                # Extract the position data (X, Y)
+                x_positions = problem_data["X"].values / 10
+                y_positions = problem_data["Y"].values / 10
+                
+                # Calculate curvature for each lap
+                curvatures = calculate_curvature(x_positions, y_positions)
                 
                 # Compute mean values for analysis
                 mean_brake = problem_data["Brake"].mean()
                 mean_throttle = problem_data["Throttle"].mean()
                 mean_drs = problem_data["DRS"].mean()
                 mean_speed = problem_data["Speed"].mean()
-                
-                # Determine category and store the subsection
-                if ((mean_brake > HIGH_BRAKE_THRESHOLD) or (mean_throttle > HIGH_THROTTLE_THRESHOLD) or (mean_throttle < LOW_THROTTLE_THRESHOLD and mean_brake < LOW_BRAKE_THRESHOLD) or (mean_drs > 0) or (mean_speed > HIGH_SPEED_THRESHOLD and mean_throttle > HIGH_THROTTLE_THRESHOLD)):
-                    if mean_brake > HIGH_BRAKE_THRESHOLD:
-                        problem_dict["Braking"].append((start, end))
-                    if mean_throttle > HIGH_THROTTLE_THRESHOLD:
-                        problem_dict["Acceleration"].append((start, end))
-                    if mean_throttle < LOW_THROTTLE_THRESHOLD and mean_brake < LOW_BRAKE_THRESHOLD:
-                        problem_dict["Cornering"].append((start, end))
-                    if mean_drs > 0:
-                        problem_dict["DRS Inefficiency"].append((start, end))
-                    if mean_speed > HIGH_SPEED_THRESHOLD and mean_throttle > HIGH_THROTTLE_THRESHOLD:
-                        problem_dict["Straight-Line Speed Issue"].append((start, end))
-                else:
-                    problem_dict["Other"].append((start, end))
 
+                # Identify whether the current section is part of a corner (based on curvature threshold)
+                cornering_section = any(c > CURVATURE_THRESHOLD for c in curvatures)
+
+                # If the car is in a corner and has issues with braking or acceleration, classify it as cornering
+                if mean_drs > DRS_THRESHOLD:  # Check DRS inefficiency first
+                    problem_dict["DRS Inefficiency"].append((start, end))
+                elif cornering_section:  # Then check if it's a cornering issue
+                    problem_dict["Cornering"].append((start, end))
+                elif mean_speed > HIGH_SPEED_THRESHOLD and mean_throttle > HIGH_THROTTLE_THRESHOLD:  # Then check for straight-line speed
+                    problem_dict["Straight-Line Speed Issue"].append((start, end))
+                elif mean_throttle > HIGH_THROTTLE_THRESHOLD and mean_brake < LOW_BRAKE_THRESHOLD:  # Acceleration issue comes next
+                    problem_dict["Acceleration"].append((start, end))
+                else:  # If no other issue is detected, categorize as "Other"
+                    problem_dict["Other"].append((start, end))
+                
     # Convert to DataFrame
     df = pd.DataFrame({
         "Problem": problem_dict.keys(),
@@ -396,12 +502,76 @@ def find_general_problems(problematic_sections, car_laps):
     return df
                 
                 
+def plot_track_with_problems(telemetry, general_problems, problem_car_analysis):
+    """
+    Plots the entire race track and overlays problem sections with different colors.
+
+    Parameters:
+    - telemetry: DataFrame containing the telemetry data with 'X' and 'Y' columns.
+    - general_problems: DataFrame containing problem sections and their subsections.
+    - problem_car_analysis: DataFrame containing car and driver problems.
+    """
+    plt.figure(figsize=(10, 8))
+
+    # Plot the full track
+    plt.plot(telemetry["X"], telemetry["Y"], color="gray", label="Track", linewidth=1)
+
+    # Define colors for each problem type
+    problem_colors = {
+        "Braking": "red",
+        "Acceleration": "blue",
+        "Cornering": "green",
+        "DRS Inefficiency": "purple",
+        "Straight-Line Speed Issue": "orange",
+        "Other": "black",
+        "Driver": "cyan"  # Color for driver-related problems
+    }
+
+    # Overlay car-related problem sections
+    for _, problem in general_problems.iterrows():
+        problem_type = problem["Problem"]
+        if problem["Subsections"]:
+            for subsection in problem["Subsections"]:
+                start, end = subsection
+                # Extract the subsection from telemetry
+                subsection_data = telemetry[(telemetry["DistanceBin"] >= start) & (telemetry["DistanceBin"] <= end)]
+                plt.plot(
+                    subsection_data["X"],
+                    subsection_data["Y"],
+                    color=problem_colors.get(problem_type, "black"),
+                    linewidth=2,
+                    label=problem_type if problem_type not in plt.gca().get_legend_handles_labels()[1] else ""
+                )
+
+    # Overlay driver-related problems
+    for _, row in problem_car_analysis.iterrows():
+        if row["Problem"] == "Driver" and row["Subsections"]:
+            for subsection in row["Subsections"]:
+                start, end = subsection
+                # Extract the subsection from telemetry
+                subsection_data = telemetry[(telemetry["DistanceBin"] >= start) & (telemetry["DistanceBin"] <= end)]
+                if not subsection_data.empty:
+                    plt.plot(
+                        subsection_data["X"],
+                        subsection_data["Y"],
+                        color=problem_colors["Driver"],
+                        linewidth=2,
+                        label="Driver Problem" if "Driver Problem" not in plt.gca().get_legend_handles_labels()[1] else ""
+                    )
+
+    # Add labels and legend
+    plt.xlabel("X Coordinate")
+    plt.ylabel("Y Coordinate")
+    plt.title("Race Track with Problem Sections")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
                 
 
 def main():
     fastf1.plotting.setup_mpl(mpl_timedelta_support=True, misc_mpl_mods=False, color_scheme='fastf1')
 
-    gp = fastf1.get_session(2025, "AUSTRALIA", "Race")
+    gp = fastf1.get_session(2025, "CHINA", "Race")
     gp.load()
     print(gp.results)
     best_driver = gp.results[gp.results['ClassifiedPosition'] == "1"]['Abbreviation'].iloc[0]
@@ -429,14 +599,17 @@ def main():
 
     problem_car_analysis = problem_analysis(first_car_analysis, second_car_analysis)
     problem_car_analysis = detect_slow_subsections(first_car_laps, problem_car_analysis, section_midpoints, all_laps)
-            
-    general_problems = find_general_problems(problem_car_analysis, first_car_laps)
+    
+    first_car_average_telemetry = get_average_telemetry(first_car_laps)        
+    general_problems = find_general_problems(problem_car_analysis, first_car_average_telemetry)
     
     for _, problem in general_problems.iterrows():
         print(f"Problem: {problem['Problem']}")
         if problem['Subsections']:
             for subsection in problem['Subsections']:
                 print(f"Subsection: {subsection}")
+                
+    plot_track_with_problems(first_car_average_telemetry, general_problems, problem_car_analysis)
     
 
 # Using the special variable 
