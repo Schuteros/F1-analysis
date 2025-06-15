@@ -166,25 +166,20 @@ def get_average_telemetry(car_laps):
     Also integrates the position data from the fastest lap with the telemetry data.
     """
     all_laps_data = []  # Store telemetry data per lap
-    
+
     # Iterate through each lap and get telemetry data
     for _, lap in car_laps.iterrows():
         telemetry = lap.get_car_data().add_distance()  # Get telemetry for this lap
-        print(telemetry)  # Check the columns in telemetry to identify position data
-        
+
         if telemetry.empty:
             continue  # Skip empty laps
 
         # Convert boolean columns to integers
         if "Brake" in telemetry.columns:
             telemetry["Brake"] = telemetry["Brake"].astype(int)
-            
+
         if "DRS" in telemetry.columns:
-            for _, datapoint in telemetry.iterrows():
-                if datapoint["DRS"] in [10, 12, 14] and datapoint["Throttle"] > 80:
-                    datapoint["DRS"] = 1
-                else:
-                    datapoint["DRS"] = 0
+            telemetry["DRS"] = telemetry["DRS"].apply(lambda drs: 1 if drs in [10, 12, 14] else 0)
 
         # Round each distance to the nearest 0.5m bin
         telemetry["DistanceBin"] = (telemetry["Distance"] / 0.5).round() * 0.5
@@ -208,16 +203,13 @@ def get_average_telemetry(car_laps):
     # Drop SessionTime and Time columns if they exist
     combined_telemetry = combined_telemetry.drop(columns=["SessionTime", "Time"], errors='ignore')
 
-    # Ensure 'DistanceBin' is set as index for proper merging later
-    combined_telemetry.set_index('DistanceBin', inplace=True)
-
     # Get the position data from the fastest lap
     pos_data = car_laps.pick_fastest().get_pos_data()
     if not pd.api.types.is_timedelta64_dtype(pos_data['SessionTime']):
         pos_data['SessionTime'] = pd.to_timedelta(pos_data['SessionTime'])
     # Ensure the position data is indexed by 'SessionTime' for merging
     pos_data = pos_data.set_index('SessionTime')
-    
+
     # Now retrieve the telemetry from the fastest lap
     fastest_lap_telemetry = car_laps.pick_fastest().get_car_data().add_distance()
     if not pd.api.types.is_timedelta64_dtype(fastest_lap_telemetry['SessionTime']):
@@ -236,7 +228,11 @@ def get_average_telemetry(car_laps):
     # Drop rows where X or Y is NaN (i.e., no valid position data)
     final_telemetry = final_telemetry.dropna(subset=['X', 'Y'])
 
-    print(final_telemetry)  # Debugging to check if the merge worked correctly
+    # Calculate curvature and add it to the telemetry
+    final_telemetry["Curvature"] = calculate_curvature(final_telemetry["X"].values, final_telemetry["Y"].values)
+
+    # Debugging: Print the final telemetry columns
+    print("Final Telemetry Columns:", final_telemetry.columns)
 
     # Return the cleaned and averaged telemetry data as a DataFrame
     return final_telemetry
@@ -407,35 +403,34 @@ def visualize_subsection(x, y):
 
 def calculate_curvature(x, y):
     """
-    Function to calculate curvature using 3 consecutive points. The scale factor is used to adjust the input coordinates.
+    Function to calculate curvature using 3 consecutive points.
+    Pads the result to match the input length.
     """
     curvatures = []
-    print(f"Total number of points: {len(x)}")  # Print the length of the x and y data
-    
     for i in range(1, len(x) - 1):
-        # Get the three consecutive points, scaling the x and y coordinates
-        x1, y1 = x[i-1], y[i-1] 
+        # Get the three consecutive points
+        x1, y1 = x[i - 1], y[i - 1]
         x2, y2 = x[i], y[i]
-        x3, y3 = x[i+1], y[i+1]
-        
+        x3, y3 = x[i + 1], y[i + 1]
+
         # Calculate the lengths of the sides of the triangle
         L1 = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
         L2 = np.sqrt((x3 - x2)**2 + (y3 - y2)**2)
         L3 = np.sqrt((x3 - x1)**2 + (y3 - y1)**2)
-        
+
         # Calculate the area of the triangle
         area = 0.5 * abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
-        
+
         # Calculate the curvature
         if L1 * L2 * L3 != 0:  # Avoid division by zero
             curvature = (2 * area) / (L1 * L2 * L3)
         else:
             curvature = 0
-        
-        curvatures.append(float(curvature))
 
+        curvatures.append(curvature)
 
-    return curvatures
+    # Pad the curvature list to match the length of x and y
+    return [0] + curvatures + [0]
 
 
 HIGH_BRAKE_THRESHOLD = 0.6
@@ -567,61 +562,75 @@ def plot_track_with_problems(telemetry, general_problems, problem_car_analysis):
     plt.show()
                 
 
-def find_straights(car_laps, curvature_threshold=0.002, throttle_threshold=0.8):
+def find_straights(average_telemetry, curvature_threshold=0.0002, gap_threshold=50, min_straight_length=20, braking_zones=None):
     """
-    Finds straights in the fastest lap based on curvature and throttle thresholds.
+    Finds straights based on curvature thresholds using average telemetry data and adjusts the end of straights
+    to align with the start of braking zones if applicable.
 
     Parameters:
-    - car_laps: DataFrame containing laps for a specific car.
+    - average_telemetry: DataFrame containing the average telemetry data with 'Distance' and 'Curvature'.
     - curvature_threshold: Maximum curvature value to consider a section as a straight.
-    - throttle_threshold: Minimum throttle percentage (as a fraction) to consider a section as a straight.
+    - gap_threshold: Maximum gap (in meters) between consecutive straights to merge them.
+    - min_straight_length: Minimum length (in meters) for a section to be considered a straight.
+    - braking_zones: List of tuples with start and end distances of braking zones (optional).
 
     Returns:
     - List of tuples with start and end distances of each straight.
     """
-    # Get telemetry and position data from the fastest lap
-    fastest_lap = car_laps.pick_fastest()
-    car_data = fastest_lap.get_car_data().add_distance()
-    pos_data = fastest_lap.get_pos_data()
+    # Ensure the required columns are present
+    if not {"Distance", "Curvature"}.issubset(average_telemetry.columns):
+        raise ValueError("Average telemetry data must contain 'Distance' and 'Curvature' columns.")
 
-    # Ensure X and Y are in the same units as Distance (meters)
-    pos_data["X"] *= 10
-    pos_data["Y"] *= 10
-
-    # Merge car data (Distance, Throttle) with position data (X, Y)
-    telemetry = pd.merge_asof(
-        car_data[["Distance", "Throttle"]],
-        pos_data[["Distance", "X", "Y"]],
-        on="Distance",
-        direction="nearest"
-    )
-
-    # Interpolate to create a uniform distance grid
-    distance_grid = np.linspace(telemetry["Distance"].min(), telemetry["Distance"].max(), len(telemetry))
-    telemetry = telemetry.set_index("Distance").reindex(distance_grid).interpolate().reset_index()
-    telemetry.rename(columns={"index": "Distance"}, inplace=True)
-
-    # Calculate curvature
-    telemetry["Curvature"] = calculate_curvature(telemetry["X"].values, telemetry["Y"].values)
-
-    # Identify straights based on curvature and throttle thresholds
-    straights = []
-    is_straight = (telemetry["Curvature"] <= curvature_threshold) & (telemetry["Throttle"] >= throttle_threshold)
+    # Identify straights based on curvature thresholds
+    is_straight = average_telemetry["Curvature"] < curvature_threshold
 
     # Group consecutive points that satisfy the straight condition
+    straights = []
     straight_start = None
     for i, straight in enumerate(is_straight):
         if straight and straight_start is None:
-            straight_start = telemetry.iloc[i]["Distance"]
+            straight_start = average_telemetry.iloc[i]["Distance"]
         elif not straight and straight_start is not None:
-            straight_end = telemetry.iloc[i - 1]["Distance"]
-            straights.append((straight_start, straight_end))
+            straight_end = average_telemetry.iloc[i - 1]["Distance"]
+            # Only add the straight if it meets the minimum length requirement
+            if straight_end - straight_start >= min_straight_length:
+                straights.append((straight_start, straight_end))
             straight_start = None
 
     # Handle the case where the last section is a straight
     if straight_start is not None:
-        straight_end = telemetry.iloc[-1]["Distance"]
-        straights.append((straight_start, straight_end))
+        straight_end = average_telemetry.iloc[-1]["Distance"]
+        if straight_end - straight_start >= min_straight_length:
+            straights.append((straight_start, straight_end))
+
+    # Debugging: Print detected straights before merging
+    print("Detected Straights Before Merging:", straights)
+
+    # Iterative merging of consecutive straights
+    while True:
+        i = 0
+        while i < len(straights) - 1:
+            if straights[i + 1][0] - straights[i][1] <= gap_threshold:
+                # Merge the current straight with the next one
+                straights[i] = (straights[i][0], straights[i + 1][1])  # Create a new tuple
+                straights.pop(i + 1)  # Remove the next straight since it has been merged
+                continue  # Restart the loop to check again from the current index
+            else:
+                i += 1
+
+        break  # Exit the loop if no merging occurred
+
+    # Adjust the end of straights to align with the start of braking zones
+    if braking_zones:
+        for i, (straight_start, straight_end) in enumerate(straights):
+            for braking_start, _ in braking_zones:
+                if braking_start > straight_start and braking_start <= straight_end:
+                    # Adjust the end of the straight to the start of the braking zone
+                    straights[i] = (straight_start, braking_start)
+                    break  # Move to the next straight after adjusting
+
+    # Debugging: Print detected straights after merging and adjustment
+    print("Detected Straights After Merging and Adjustment:", straights)
 
     return straights
 
@@ -658,65 +667,48 @@ def plot_sections(telemetry, sections, title="Track Sections", section_label="Se
     plt.ylabel("Y Coordinate")
     plt.title(title)
     plt.legend()
-    plt.grid(True)
+    plt.grid()
     plt.show()
 
 
-def find_braking_zones(car_laps, curvature_threshold=0.002, gap_threshold=10):
+def find_braking_zones(average_telemetry, brake_threshold=0.2, gap_threshold=00, min_braking_length=20):
     """
-    Finds braking zones in the fastest lap based on brake application and curvature thresholds.
+    Finds braking zones based on brake application thresholds using average telemetry data.
 
     Parameters:
-    - car_laps: DataFrame containing laps for a specific car.
-    - curvature_threshold: Maximum curvature value to consider a section as a braking zone.
+    - average_telemetry: DataFrame containing the average telemetry data with 'Distance' and 'Brake'.
+    - brake_threshold: Minimum brake value to consider a section as a braking zone.
     - gap_threshold: Maximum gap (in meters) between consecutive braking zones to merge them.
+    - min_braking_length: Minimum length (in meters) for a section to be considered a braking zone.
 
     Returns:
     - List of tuples with start and end distances of each braking zone.
     """
-    # Get telemetry and position data from the fastest lap
-    fastest_lap = car_laps.pick_fastest()
-    car_data = fastest_lap.get_car_data().add_distance()
-    pos_data = fastest_lap.get_pos_data()
+    # Ensure the required columns are present
+    if not {"Distance", "Brake"}.issubset(average_telemetry.columns):
+        raise ValueError("Average telemetry data must contain 'Distance' and 'Brake' columns.")
 
-    # Ensure X and Y are in the same units as Distance (meters)
-    pos_data["X"] *= 10
-    pos_data["Y"] *= 10
-
-    # Merge car data (Distance, Brake) with position data (X, Y)
-    telemetry = pd.merge_asof(
-        car_data[["Distance", "Brake"]],
-        pos_data[["Distance", "X", "Y"]],
-        on="Distance",
-        direction="nearest"
-    )
-
-    # Interpolate to create a uniform distance grid
-    distance_grid = np.linspace(telemetry["Distance"].min(), telemetry["Distance"].max(), len(telemetry))
-    telemetry = telemetry.set_index("Distance").reindex(distance_grid).interpolate().reset_index()
-    telemetry.rename(columns={"index": "Distance"}, inplace=True)
-
-    # Calculate curvature
-    telemetry["Curvature"] = calculate_curvature(telemetry["X"].values, telemetry["Y"].values)
-
-    # Identify braking zones based on brake application and curvature thresholds
+    # Identify braking zones based on brake application thresholds
     braking_zones = []
-    is_braking = (telemetry["Brake"] > 0) & (telemetry["Curvature"] <= curvature_threshold)
+    is_braking = average_telemetry["Brake"] > brake_threshold
 
     # Group consecutive points that satisfy the braking condition
     braking_start = None
     for i, braking in enumerate(is_braking):
         if braking and braking_start is None:
-            braking_start = telemetry.iloc[i]["Distance"]
+            braking_start = average_telemetry.iloc[i]["Distance"]
         elif not braking and braking_start is not None:
-            braking_end = telemetry.iloc[i - 1]["Distance"]
-            braking_zones.append((braking_start, braking_end))
+            braking_end = average_telemetry.iloc[i - 1]["Distance"]
+            # Only add the braking zone if it meets the minimum length requirement
+            if braking_end - braking_start >= min_braking_length:
+                braking_zones.append((braking_start, braking_end))
             braking_start = None
 
     # Handle the case where the last section is a braking zone
     if braking_start is not None:
-        braking_end = telemetry.iloc[-1]["Distance"]
-        braking_zones.append((braking_start, braking_end))
+        braking_end = average_telemetry.iloc[-1]["Distance"]
+        if braking_end - braking_start >= min_braking_length:
+            braking_zones.append((braking_start, braking_end))
 
     # Merge consecutive braking zones if the gap between them is less than the gap_threshold
     merged_braking_zones = []
@@ -730,61 +722,52 @@ def find_braking_zones(car_laps, curvature_threshold=0.002, gap_threshold=10):
     return merged_braking_zones
 
 
-def find_corners(car_laps, curvature_threshold=0.002, gap_threshold=10):
+def find_corners(average_telemetry, curvature_threshold=0.0002, gap_threshold=50, min_corner_length=10):
     """
-    Finds corners in the fastest lap based on curvature thresholds.
+    Finds corners based on curvature thresholds using average telemetry data.
 
     Parameters:
-    - car_laps: DataFrame containing laps for a specific car.
+    - average_telemetry: DataFrame containing the average telemetry data with 'Distance', 'Curvature', and optionally 'Speed'.
     - curvature_threshold: Minimum curvature value to consider a section as a corner.
     - gap_threshold: Maximum gap (in meters) between consecutive corners to merge them.
+    - min_corner_length: Minimum length (in meters) for a section to be considered a corner.
 
     Returns:
     - List of tuples with start and end distances of each corner.
     """
-    # Get telemetry and position data from the fastest lap
-    fastest_lap = car_laps.pick_fastest()
-    car_data = fastest_lap.get_car_data().add_distance()
-    pos_data = fastest_lap.get_pos_data()
+    # Ensure the required columns are present
+    if not {"Distance", "Curvature"}.issubset(average_telemetry.columns):
+        raise ValueError("Average telemetry data must contain 'Distance' and 'Curvature' columns.")
 
-    # Ensure X and Y are in the same units as Distance (meters)
-    pos_data["X"] *= 10
-    pos_data["Y"] *= 10
+    # Debugging: Print curvature statistics
+    print("Curvature Statistics:")
+    print(average_telemetry["Curvature"].describe())
 
-    # Merge car data (Distance) with position data (X, Y)
-    telemetry = pd.merge_asof(
-        car_data[["Distance"]],
-        pos_data[["Distance", "X", "Y"]],
-        on="Distance",
-        direction="nearest"
-    )
-
-    # Interpolate to create a uniform distance grid
-    distance_grid = np.linspace(telemetry["Distance"].min(), telemetry["Distance"].max(), len(telemetry))
-    telemetry = telemetry.set_index("Distance").reindex(distance_grid).interpolate().reset_index()
-    telemetry.rename(columns={"index": "Distance"}, inplace=True)
-
-    # Calculate curvature
-    telemetry["Curvature"] = calculate_curvature(telemetry["X"].values, telemetry["Y"].values)
+    # Smooth the curvature values to reduce noise
+    from scipy.signal import savgol_filter
+    average_telemetry["Curvature"] = savgol_filter(average_telemetry["Curvature"], window_length=7, polyorder=2)
 
     # Identify corners based on curvature thresholds
     corners = []
-    is_corner = telemetry["Curvature"] > curvature_threshold
+    is_corner = average_telemetry["Curvature"] > curvature_threshold
 
     # Group consecutive points that satisfy the corner condition
     corner_start = None
     for i, corner in enumerate(is_corner):
         if corner and corner_start is None:
-            corner_start = telemetry.iloc[i]["Distance"]
+            corner_start = average_telemetry.iloc[i]["Distance"]
         elif not corner and corner_start is not None:
-            corner_end = telemetry.iloc[i - 1]["Distance"]
-            corners.append((corner_start, corner_end))
+            corner_end = average_telemetry.iloc[i - 1]["Distance"]
+            # Only add the corner if it meets the minimum length requirement
+            if corner_end - corner_start >= min_corner_length:
+                corners.append((corner_start, corner_end))
             corner_start = None
 
     # Handle the case where the last section is a corner
     if corner_start is not None:
-        corner_end = telemetry.iloc[-1]["Distance"]
-        corners.append((corner_start, corner_end))
+        corner_end = average_telemetry.iloc[-1]["Distance"]
+        if corner_end - corner_start >= min_corner_length:
+            corners.append((corner_start, corner_end))
 
     # Merge consecutive corners if the gap between them is less than the gap_threshold
     merged_corners = []
@@ -798,35 +781,54 @@ def find_corners(car_laps, curvature_threshold=0.002, gap_threshold=10):
     return merged_corners
 
 
-def find_exits(corners, straights):
+def find_exits(average_telemetry, acceleration_threshold=1.0, min_exit_length=20):
     """
-    Finds exit phases based on corner and straight data.
+    Finds exit phases based on acceleration thresholds using average telemetry data.
 
     Parameters:
-    - corners: List of tuples, where each tuple contains the start and end distances of a corner.
-    - straights: List of tuples, where each tuple contains the start and end distances of a straight.
+    - average_telemetry: DataFrame containing the average telemetry data with 'Distance' and 'Speed'.
+    - acceleration_threshold: Minimum acceleration (in m/s^2) to consider a section as an exit.
+    - min_exit_length: Minimum length (in meters) for a section to be considered an exit.
 
     Returns:
     - List of tuples with start and end distances of each exit phase.
     """
+    # Ensure the required columns are present
+    if not {"Distance", "Speed"}.issubset(average_telemetry.columns):
+        raise ValueError("Average telemetry data must contain 'Distance' and 'Speed' columns.")
+
+    # Calculate acceleration using the formula: a = (v^2 - v0^2) / (2 * s)
+    average_telemetry["Acceleration"] = (
+        (average_telemetry["Speed"].diff()**2 - average_telemetry["Speed"].shift()**2) /
+        (2 * average_telemetry["Distance"].diff())
+    )
+
+    # Identify exit phases based on acceleration thresholds
+    is_exit = average_telemetry["Acceleration"] > acceleration_threshold
+
+    # Group consecutive points that satisfy the exit condition
     exits = []
+    exit_start = None
+    for i, exit_phase in enumerate(is_exit):
+        if exit_phase and exit_start is None:
+            exit_start = average_telemetry.iloc[i]["Distance"]
+        elif not exit_phase and exit_start is not None:
+            exit_end = average_telemetry.iloc[i - 1]["Distance"]
+            # Only add the exit if it meets the minimum length requirement
+            if exit_end - exit_start >= min_exit_length:
+                exits.append((exit_start, exit_end))
+            exit_start = None
 
-    # Iterate through corners and straights to find exit phases
-    for corner in corners:
-        corner_end = corner[1]  # End of the corner
-        for straight in straights:
-            straight_start = straight[0]  # Start of the straight
-
-            # Check if the straight starts after the corner ends
-            if straight_start > corner_end:
-                # Define the exit phase as the section between the corner end and straight start
-                exits.append((corner_end, straight_start))
-                break  # Move to the next corner after finding the corresponding straight
+    # Handle the case where the last section is an exit
+    if exit_start is not None:
+        exit_end = average_telemetry.iloc[-1]["Distance"]
+        if exit_end - exit_start >= min_exit_length:
+            exits.append((exit_start, exit_end))
 
     return exits
 
 
-def find_and_override_drs_zones(average_telemetry, straights, braking_zones, corners, exits, throttle_threshold=0.8):
+def find_and_override_drs_zones(average_telemetry, straights, braking_zones, corners, exits, throttle_threshold=80):
     """
     Finds DRS zones based on average telemetry data and removes overlapping parts from other sections.
 
@@ -897,6 +899,88 @@ def find_and_override_drs_zones(average_telemetry, straights, braking_zones, cor
     return drs_zones, updated_straights, updated_braking_zones, updated_corners, updated_exits
 
 
+def calculate_sections(average_telemetry, curvature_threshold=0.0002, brake_threshold=0.2, acceleration_threshold=1.0, min_corner_length=10):
+    """
+    Calculates all sections (corners, braking zones, exits, straights) in order.
+
+    Parameters:
+    - average_telemetry: DataFrame containing the average telemetry data with 'Distance', 'X', 'Y', 'Brake', 'Curvature', 'Speed'.
+    - curvature_threshold: Minimum curvature value to consider a section as a corner.
+    - brake_threshold: Minimum brake value to consider a section as a braking zone.
+    - acceleration_threshold: Minimum acceleration (in m/s^2) to consider a section as an exit.
+    - min_corner_length: Minimum length (in meters) for a corner.
+
+    Returns:
+    - Dictionary containing all sections: corners, braking zones, exits, and straights.
+    """
+    # Step 1: Identify corners
+    corners = find_corners(average_telemetry, curvature_threshold, min_corner_length=min_corner_length)
+
+    # Step 2: Identify braking zones
+    braking_zones = find_braking_zones(average_telemetry, brake_threshold)
+
+    # Step 3: Identify straights
+    straights = find_straights(average_telemetry, curvature_threshold, braking_zones=braking_zones)
+
+    # Step 4: Identify exits based on acceleration
+    exits = find_exits(average_telemetry, acceleration_threshold=acceleration_threshold)
+
+    # Return all sections
+    return {
+        "corners": corners,
+        "braking_zones": braking_zones,
+        "exits": exits,
+        "straights": straights,
+    }
+
+
+def remove_overlaps(target_sections, reference_sections, min_corner_length=50):
+    """
+    Removes overlapping parts of target_sections that overlap with reference_sections by splitting at the midpoint,
+    unless the reference section (e.g., a corner) is smaller than a specified minimum length.
+
+    Parameters:
+    - target_sections: List of tuples (start, end) representing the target sections.
+    - reference_sections: List of tuples (start, end) representing the reference sections.
+    - min_corner_length: Minimum length (in meters) for a reference section to allow merging through the midpoint.
+
+    Returns:
+    - List of tuples (start, end) with overlaps handled appropriately.
+    """
+    updated_sections = []
+    for target_start, target_end in target_sections:
+        current_section = [(target_start, target_end)]
+
+        for ref_start, ref_end in reference_sections:
+            new_section = []
+            for sub_start, sub_end in current_section:
+                # If the reference section overlaps with the target section
+                if ref_start <= sub_end and ref_end >= sub_start:
+                    # Check the length of the reference section
+                    ref_length = ref_end - ref_start
+                    if ref_length < min_corner_length:
+                        # If the reference section is too small, do not split at the midpoint
+                        continue
+                    else:
+                        # Find the midpoint of the overlap
+                        overlap_start = max(sub_start, ref_start)
+                        overlap_end = min(sub_end, ref_end)
+                        midpoint = (overlap_start + overlap_end) / 2
+
+                        # Split the section at the midpoint
+                        if sub_start < midpoint:
+                            new_section.append((sub_start, midpoint))
+                        if sub_end > midpoint:
+                            new_section.append((midpoint, sub_end))
+                else:
+                    # If no overlap, keep the section as is
+                    new_section.append((sub_start, sub_end))
+            current_section = new_section
+
+        updated_sections.extend(current_section)
+    return updated_sections
+
+
 def main():
     fastf1.plotting.setup_mpl(mpl_timedelta_support=True, misc_mpl_mods=False, color_scheme='fastf1')
 
@@ -905,41 +989,20 @@ def main():
     print(gp.results)
     best_driver = gp.results[gp.results['ClassifiedPosition'] == "1"]['Abbreviation'].iloc[0]
     print(best_driver)
-    
-    fastest_lap = gp.laps.pick_fastest()
-    fastest_lap_data = fastest_lap.get_car_data().add_distance()
-
-    distance = fastest_lap_data['Distance'].to_numpy()
-    speed = fastest_lap_data['Speed'].to_numpy()
-
-    # Detect sections based on refined peak detection
-    section_midpoints, max_idxs, min_idxs = detect_sections(distance, speed)
-    plot_section_graph(distance, speed, max_idxs, min_idxs, section_midpoints)
 
     first_car_laps = gp.laps.pick_drivers("HUL").pick_accurate().pick_quicklaps()
-    print(first_car_laps)
-    second_car_laps = gp.laps.pick_drivers("BOR").pick_accurate().pick_quicklaps()
-    all_laps = gp.laps.pick_accurate().pick_quicklaps()
+    first_car_average_telemetry = get_average_telemetry(first_car_laps)
 
-    first_car_average_section_times = calculate_section_times(first_car_laps, section_midpoints)
-    second_car_average_section_times = calculate_section_times(second_car_laps, section_midpoints)
-    first_car_analysis = analyze_performance(gp, section_midpoints, best_driver, first_car_average_section_times)
-    second_car_analysis = analyze_performance(gp,section_midpoints, best_driver, second_car_average_section_times)
+    # Calculate all sections
+    sections = calculate_sections(first_car_average_telemetry)
 
-    problem_car_analysis = problem_analysis(first_car_analysis, second_car_analysis)
-    problem_car_analysis = detect_slow_subsections(first_car_laps, problem_car_analysis, section_midpoints, all_laps)
-    
-    first_car_average_telemetry = get_average_telemetry(first_car_laps)        
-    general_problems = find_general_problems(problem_car_analysis, first_car_average_telemetry)
-    
-    for _, problem in general_problems.iterrows():
-        print(f"Problem: {problem['Problem']}")
-        if problem['Subsections']:
-            for subsection in problem['Subsections']:
-                print(f"Subsection: {subsection}")
-                
-    plot_track_with_problems(first_car_average_telemetry, general_problems, problem_car_analysis)
-    
+    # Visualize each section type
+    plot_sections(first_car_average_telemetry, sections["corners"], title="Corners", section_label="Corner")
+    plot_sections(first_car_average_telemetry, sections["braking_zones"], title="Braking Zones", section_label="Braking Zone")
+    plot_sections(first_car_average_telemetry, sections["exits"], title="Exits", section_label="Exit")
+    plot_sections(first_car_average_telemetry, sections["straights"], title="Straights", section_label="Straight")
+    #plot_sections(first_car_average_telemetry, sections["drs_zones"], title="DRS Zones", section_label="DRS Zone")
+
 
 # Using the special variable 
 # __name__
