@@ -781,7 +781,7 @@ def find_corners(average_telemetry, curvature_threshold=0.0002, gap_threshold=50
     return merged_corners
 
 
-def find_exits(average_telemetry, acceleration_threshold=1.0, min_exit_length=20):
+def find_exits(average_telemetry, acceleration_threshold=3, min_exit_length=20):
     """
     Finds exit phases based on acceleration thresholds using average telemetry data.
 
@@ -797,11 +797,21 @@ def find_exits(average_telemetry, acceleration_threshold=1.0, min_exit_length=20
     if not {"Distance", "Speed"}.issubset(average_telemetry.columns):
         raise ValueError("Average telemetry data must contain 'Distance' and 'Speed' columns.")
 
-    # Calculate acceleration using the formula: a = (v^2 - v0^2) / (2 * s)
-    average_telemetry["Acceleration"] = (
-        (average_telemetry["Speed"].diff()**2 - average_telemetry["Speed"].shift()**2) /
-        (2 * average_telemetry["Distance"].diff())
-    )
+    # Calculate acceleration as the derivative of speed with respect to time
+    # Ensure Speed is in m/s (convert from km/h if necessary)
+    if average_telemetry["Speed"].max() > 100:  # likely in km/h
+        speed_mps = average_telemetry["Speed"] / 3.6
+    else:
+        speed_mps = average_telemetry["Speed"]
+
+    # Estimate time difference between points (assuming uniform sampling, or use Distance and Speed)
+    # dt = ds / v
+    ds = average_telemetry["Distance"].diff()
+    dt = ds / speed_mps.replace(0, np.nan)
+    average_telemetry["Acceleration"] = speed_mps.diff() / dt
+    average_telemetry["Acceleration"] = average_telemetry["Acceleration"].replace([np.inf, -np.inf], np.nan).fillna(0)
+    
+    print("Acceleration Statistics:" + str(average_telemetry["Acceleration"].describe()))
 
     # Identify exit phases based on acceleration thresholds
     is_exit = average_telemetry["Acceleration"] > acceleration_threshold
@@ -899,7 +909,8 @@ def find_and_override_drs_zones(average_telemetry, straights, braking_zones, cor
     return drs_zones, updated_straights, updated_braking_zones, updated_corners, updated_exits
 
 
-def calculate_sections(average_telemetry, curvature_threshold=0.0002, brake_threshold=0.2, acceleration_threshold=1.0, min_corner_length=10):
+def calculate_sections(average_telemetry, curvature_threshold=0.0002, brake_threshold=0.2, acceleration_threshold=3.75
+                       , min_corner_length=10):
     """
     Calculates all sections (corners, braking zones, exits, straights) in order.
 
