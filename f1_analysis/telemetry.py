@@ -174,6 +174,12 @@ def synchronize_speed_data(
     return new_distance, speed_interp, avg_speed_interp
 
 
+def speed_at(distance: FloatArray, speed: FloatArray, positions: FloatArray) -> FloatArray:
+    """Speed linearly interpolated at ``positions`` (m) along the lap."""
+    interpolated: FloatArray = np.interp(positions, distance, speed)
+    return interpolated
+
+
 def slice_by_distance_bin(telemetry: pd.DataFrame, start: float, end: float) -> pd.DataFrame:
     """Rows whose DistanceBin lies in [start, end] (inclusive)."""
     require_columns(telemetry, ["DistanceBin"], "slice_by_distance_bin")

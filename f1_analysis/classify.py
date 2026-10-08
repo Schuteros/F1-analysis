@@ -3,7 +3,7 @@
 import pandas as pd
 
 from f1_analysis import config
-from f1_analysis.attribution import CAR
+from f1_analysis.attribution import CAR, DRIVER
 from f1_analysis.telemetry import (
     Section,
     calculate_curvature,
@@ -84,3 +84,24 @@ def find_general_problems(
             "Subsections": [subsections or None for subsections in found.values()],
         }
     )
+
+
+def problem_sections(general_problems: pd.DataFrame) -> dict[str, list[Section]]:
+    """{problem type: [(start, end), ...]} from find_general_problems output (None -> [])."""
+    require_columns(general_problems, ["Problem", "Subsections"], "problem_sections")
+    return {
+        str(name): list(subsections or [])
+        for name, subsections in zip(
+            general_problems["Problem"], general_problems["Subsections"], strict=True
+        )
+    }
+
+
+def driver_subsections(labelled_sections: pd.DataFrame) -> list[Section]:
+    """All subsections of sections labelled "Driver"."""
+    require_columns(labelled_sections, ["Problem", "Subsections"], "driver_subsections")
+    found: list[Section] = []
+    for _, section in labelled_sections.iterrows():
+        if section["Problem"] == DRIVER:
+            found.extend(section["Subsections"])
+    return found
