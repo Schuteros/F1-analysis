@@ -54,9 +54,14 @@ def test_pick_orders_are_distinct() -> None:
     data.pick_driver_laps_quick_first(session, "HUL")
     data.pick_field_laps(session)
     assert calls == [
-        "drivers:HUL", "accurate", "quick",
-        "drivers:HUL", "quick", "accurate",
-        "quick", "accurate",
+        "drivers:HUL",
+        "accurate",
+        "quick",
+        "drivers:HUL",
+        "quick",
+        "accurate",
+        "quick",
+        "accurate",
     ]
 
 
