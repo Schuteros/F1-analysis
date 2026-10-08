@@ -32,7 +32,9 @@ YEAR, EVENT, SESSION, DRIVER = 2025, "CHINESE", "Sprint", "HUL"
 
 
 def load_legacy() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("legacy_main", ROOT / "scripts" / "legacy_main.py")
+    spec = importlib.util.spec_from_file_location(
+        "legacy_main", ROOT / "scripts" / "legacy_main.py"
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -79,7 +81,9 @@ def main() -> None:
     old = load_legacy()
     CACHE_DIR.mkdir(exist_ok=True)
     fastf1.Cache.enable_cache(str(CACHE_DIR))
-    fastf1.plotting.setup_mpl(mpl_timedelta_support=True, misc_mpl_mods=False, color_scheme="fastf1")
+    fastf1.plotting.setup_mpl(
+        mpl_timedelta_support=True, misc_mpl_mods=False, color_scheme="fastf1"
+    )
 
     saved_figs: list[str] = []
 
@@ -105,7 +109,9 @@ def main() -> None:
     telemetry.to_csv(out / "average_telemetry.csv", index=False)
 
     old.plot_sections(telemetry, sections["corners"], title="Corners", section_label="Corner")
-    old.plot_sections(telemetry, sections["braking_zones"], title="Braking Zones", section_label="Braking Zone")
+    old.plot_sections(
+        telemetry, sections["braking_zones"], title="Braking Zones", section_label="Braking Zone"
+    )
     old.plot_sections(telemetry, sections["exits"], title="Exits", section_label="Exit")
     old.plot_sections(telemetry, sections["straights"], title="Straights", section_label="Straight")
 
@@ -124,35 +130,42 @@ def main() -> None:
     winner_times = old.calculate_section_times(winner_laps, midpoints)
 
     driver_analysis = attempt(
-        errors, "analyze_performance_driver",
+        errors,
+        "analyze_performance_driver",
         lambda: old.analyze_performance(gp, midpoints, winner, driver_times),
     )
     winner_analysis = attempt(
-        errors, "analyze_performance_winner",
+        errors,
+        "analyze_performance_winner",
         lambda: old.analyze_performance(gp, midpoints, winner, winner_times),
     )
     if driver_analysis is not None and winner_analysis is not None:
         dump(out, "analysis_driver", driver_analysis)
         dump(out, "analysis_winner", winner_analysis)
         problems = attempt(
-            errors, "problem_analysis", lambda: old.problem_analysis(driver_analysis, winner_analysis)
+            errors,
+            "problem_analysis",
+            lambda: old.problem_analysis(driver_analysis, winner_analysis),
         )
         if problems is not None:
             dump(out, "problem_analysis", problems)
             with_sub = attempt(
-                errors, "detect_slow_subsections",
+                errors,
+                "detect_slow_subsections",
                 lambda: old.detect_slow_subsections(driver_laps, problems, midpoints, all_laps),
             )
             if with_sub is not None:
                 dump(out, "problem_subsections", with_sub)
                 general = attempt(
-                    errors, "find_general_problems",
+                    errors,
+                    "find_general_problems",
                     lambda: old.find_general_problems(with_sub, telemetry),
                 )
                 if general is not None:
                     dump(out, "general_problems", general)
                     attempt(
-                        errors, "plot_track_with_problems",
+                        errors,
+                        "plot_track_with_problems",
                         lambda: old.plot_track_with_problems(telemetry, general, with_sub),
                     )
     dump(out, "errors", errors)
