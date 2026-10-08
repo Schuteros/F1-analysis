@@ -28,6 +28,7 @@ packages = ["f1_analysis"]
 
 [tool.mypy]
 strict = true
+python_version = "3.12"
 files = ["f1_analysis", "tests"]
 
 [[tool.mypy.overrides]]
@@ -36,10 +37,14 @@ ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["scripts/legacy_main.py", ".venv"]
+target-version = "py312"
+extend-exclude = ["main.py", "scripts/legacy_main.py", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "ANN"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E501", "ANN401"]  # dev scripts handle untyped FastF1/JSON data
