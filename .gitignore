@@ -1,3 +1,9 @@
 # Ignore F1 research document
 f1*reseach.odt
-venv
+venv.fastf1-cache/
+.venv/
+.idea/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
