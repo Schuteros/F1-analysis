@@ -29,10 +29,13 @@ SPEED_SMOOTHING_POLYORDER: Final = 2  # polynomial order of the speed Savitzky-G
 CURVATURE_SMOOTHING_WINDOW_SAMPLES: Final = 7  # samples; Savitzky-Golay window (odd)
 CURVATURE_SMOOTHING_POLYORDER: Final = 2  # polynomial order of the curvature filter
 
-# --- Curvature thresholds ---------------------------------------------------------------------
-# Curvature = 1 / radius. The thresholds below are all radius < 500 m, but in different units:
-# averaged telemetry has X/Y in decimetres (1/dm), the classifier uses metres (1/m).
-# 0.0002 1/dm == 0.002 1/m. Kept as separate names so the (apparent) mismatch stays visible.
+# --- Curvature ----------------------------------------------------------------------------------
+CURVATURE_AREA_FACTOR: Final = 2.0  # multiplies triangle area; true circle curvature needs 4.0
+
+# Thresholds below are nominally "radius < 500 m" but in different units: averaged telemetry has
+# X/Y in decimetres (1/dm), the classifier uses metres (1/m). 0.0002 1/dm == 0.002 1/m.
+# Kept as separate names so the (apparent) mismatch stays visible. Because the curvature
+# function returns 1/(2R) (CURVATURE_AREA_FACTOR), the effective radius cut-off is 250 m.
 CORNER_CURVATURE_THRESHOLD_PER_DM: Final = 0.0002  # 1/dm; find_corners default (radius 5000 dm)
 STRAIGHT_CURVATURE_THRESHOLD_PER_DM: Final = 0.0002  # 1/dm; find_straights default (max curvature)
 SECTIONS_CURVATURE_THRESHOLD_PER_DM: Final = 0.0002  # 1/dm; calculate_sections default
