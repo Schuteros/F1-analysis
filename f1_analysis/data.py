@@ -47,16 +47,6 @@ def pick_driver_laps(session: Session, driver: str) -> Laps:
     return _require_laps(laps, f"accurate+quick laps of {driver}")
 
 
-def pick_driver_laps_quick_first(session: Session, driver: str) -> Laps:
-    """Driver's quick laps, then accurate laps (the order calculate_driver_consistency used).
-
-    The quick-lap cut-off is relative to the fastest lap in the set, so this order can
-    select different laps from pick_driver_laps.
-    """
-    laps = session.laps.pick_drivers(driver).pick_quicklaps().pick_accurate()
-    return _require_laps(laps, f"quick+accurate laps of {driver}")
-
-
 def pick_field_laps(session: Session) -> Laps:
     """All drivers' quick laps, then accurate laps (the order analyze_performance used)."""
     laps = session.laps.pick_quicklaps().pick_accurate()

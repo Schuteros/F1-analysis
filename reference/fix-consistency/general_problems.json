@@ -1,0 +1,45 @@
+{
+ "columns": [
+  "Problem",
+  "Subsections"
+ ],
+ "index": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "data": [
+  [
+   "Braking",
+   null
+  ],
+  [
+   "Acceleration",
+   null
+  ],
+  [
+   "Cornering",
+   null
+  ],
+  [
+   "DRS Inefficiency",
+   [
+    [
+     5238.372340425532,
+     5378.018292682927
+    ]
+   ]
+  ],
+  [
+   "Straight-Line Speed Issue",
+   null
+  ],
+  [
+   "Other",
+   null
+  ]
+ ]
+}

@@ -10,16 +10,14 @@ or a small edit in the named function.
 1. ~~**Curvature is half the true value.**~~ **Fixed in `fix-curvature`.** `calculate_curvature`
    used `2*area/(abc)` (half the true curvature). It now returns `1/R`, and every curvature threshold
    in `config.py` was doubled so results are identical (radius cut-off 250 m, as before).
-2. **"Consistency" is the same number for both cars.** `calculate_driver_consistency` compares the
-   *comparison car's* lap-to-lap spread with the *whole field's* spread. It does not use the analysed
-   driver at all, so `analysis_driver` and `analysis_winner` have identical Consistency columns
-   (verified in the reference output). Consequence in `attribution.label_section`: if a section is
-   inconsistent, the other car is inconsistent by definition, so the label is always "Car". "Driver"
-   can only come from the slow-but-consistent branch.
-3. **Lap-picking order differs between call sites.** `pick_accurate().pick_quicklaps()` (main),
-   `pick_quicklaps().pick_accurate()` (analyze_performance, consistency). The quick-lap cut-off is
-   relative to the fastest lap in the set, so the order can select different laps. Kept as three
-   functions in `data.py`.
+2. ~~**"Consistency" is the same number for both cars.**~~ **Fixed in `fix-consistency`.** Each car
+   is now compared with the field: `(std(car laps) - std(field laps)) / std(field laps)` per section.
+   Caveat: "field" is all drivers' laps pooled, so it also contains between-driver differences in
+   section time and is a wider reference than a single driver's spread.
+3. **Lap-picking order differs between call sites.** `pick_accurate().pick_quicklaps()` (main) vs
+   `pick_quicklaps().pick_accurate()` (analyze_performance). The quick-lap cut-off is relative to the
+   fastest lap in the set, so the order can select different laps. (The third variant, used only by
+   the old consistency reference, was removed with the consistency fix.)
 4. **Averaged telemetry is sparse.** X/Y come only from the fastest lap's samples and bins without a
    position are dropped, leaving about one row per 15 m (357 rows for the 5.4 km reference lap).
    Curvature, the 7-sample smoothing and all 10-50 m length thresholds work on that grid.

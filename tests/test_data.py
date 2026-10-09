@@ -47,19 +47,15 @@ class _Laps:
         return self
 
 
-def test_pick_orders_are_distinct() -> None:
+def test_pick_orders() -> None:
     calls: list[str] = []
     session = SimpleNamespace(laps=_Laps(calls))
     data.pick_driver_laps(session, "HUL")
-    data.pick_driver_laps_quick_first(session, "HUL")
     data.pick_field_laps(session)
     assert calls == [
         "drivers:HUL",
         "accurate",
         "quick",
-        "drivers:HUL",
-        "quick",
-        "accurate",
         "quick",
         "accurate",
     ]

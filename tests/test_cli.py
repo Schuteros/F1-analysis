@@ -17,7 +17,6 @@ def _inputs() -> cli.AnalysisInputs:
         subject_laps=subject,
         subject_fastest=synthetic.make_fastest_lap(subject[1]),
         compare_laps=compare,
-        compare_laps_quick_first=compare,
         field_laps=subject + compare,
     )
 
@@ -89,3 +88,12 @@ def test_parse_args_reads_options() -> None:
         ]
     )
     assert (args.year, args.compare_to, args.save_plots) == (2024, "NOR", Path("out"))
+
+
+def test_each_car_gets_its_own_consistency() -> None:
+    result = cli.run_pipeline(_inputs())
+    subject = result.subject_analysis["Consistency"]
+    compare = result.compare_analysis["Consistency"]
+    assert not subject.equals(compare)
+    # subject laps vary in speed from lap to lap, the comparison car's do not
+    assert subject.mean() > compare.mean()

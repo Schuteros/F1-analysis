@@ -26,13 +26,12 @@ class AnalysisInputs(NamedTuple):
     """Per-lap telemetry (with Distance and Time) for every group the analysis needs.
 
     The lap-picking order differs between groups on purpose, to match the original code:
-    see data.pick_driver_laps / pick_driver_laps_quick_first / pick_field_laps.
+    see data.pick_driver_laps / pick_field_laps.
     """
 
     subject_laps: list[pd.DataFrame]  # the analysed driver
     subject_fastest: data.FastestLapData  # fastest lap of the analysed driver (for X/Y)
     compare_laps: list[pd.DataFrame]  # the comparison car, picked like subject_laps
-    compare_laps_quick_first: list[pd.DataFrame]  # comparison car, consistency reference
     field_laps: list[pd.DataFrame]  # all drivers
 
 
@@ -57,15 +56,14 @@ def run_pipeline(inputs: AnalysisInputs) -> AnalysisResult:
         average["Distance"].to_numpy(dtype=float), average["Speed"].to_numpy(dtype=float)
     ).midpoints
 
+    field_times = timing.get_section_times(inputs.field_laps, midpoints)
     field_average = timing.calculate_section_times(inputs.field_laps, midpoints)
-    consistency = timing.driver_consistency(
-        timing.get_section_times(inputs.compare_laps_quick_first, midpoints),
-        timing.get_section_times(inputs.field_laps, midpoints),
-    )
 
     def analyse(laps: list[pd.DataFrame]) -> pd.DataFrame:
+        car_times = timing.get_section_times(laps, midpoints)
         car_average = timing.calculate_section_times(laps, midpoints)
         z_scores = timing.find_and_normalize_section_times(field_average, car_average)
+        consistency = timing.driver_consistency(field_times, car_times)
         return timing.build_performance_table(z_scores, consistency)
 
     subject_analysis = analyse(inputs.subject_laps)
@@ -94,13 +92,11 @@ def load_inputs(session: fastf1.core.Session, driver: str, compare_to: str) -> A
     """Pick laps from a loaded session and read their telemetry."""
     subject = data.pick_driver_laps(session, driver)
     compare = data.pick_driver_laps(session, compare_to)
-    compare_quick_first = data.pick_driver_laps_quick_first(session, compare_to)
     field = data.pick_field_laps(session)
     return AnalysisInputs(
         subject_laps=data.load_lap_telemetries(subject),
         subject_fastest=data.load_fastest_lap(subject),
         compare_laps=data.load_lap_telemetries(compare),
-        compare_laps_quick_first=data.load_lap_telemetries(compare_quick_first),
         field_laps=data.load_lap_telemetries(field),
     )
 

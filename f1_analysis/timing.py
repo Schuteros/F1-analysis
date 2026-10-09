@@ -91,18 +91,19 @@ def section_std(section_times: Mapping[int, Sequence[float]]) -> dict[int, float
 
 
 def driver_consistency(
-    reference_times: Mapping[int, Sequence[float]], field_times: Mapping[int, Sequence[float]]
+    reference_times: Mapping[int, Sequence[float]], car_times: Mapping[int, Sequence[float]]
 ) -> dict[int, float]:
-    """Relative excess lap-to-lap spread: (std(field) - std(reference)) / std(reference).
+    """Relative excess lap-to-lap spread: (std(car) - std(reference)) / std(reference).
 
-    0 means as consistent as the reference; 0.2 means 20 % more spread. A reference standard
-    deviation of exactly 0 is replaced by ZERO_STD_REPLACEMENT in the denominator.
+    0 means as consistent as the reference (the field's pooled laps in the pipeline); 0.2 means
+    20 % more spread. A reference standard deviation of exactly 0 is replaced by
+    ZERO_STD_REPLACEMENT in the denominator.
     """
-    _require_same_sections(reference_times, field_times, "consistency")
+    _require_same_sections(reference_times, car_times, "consistency")
     reference_std = section_std(reference_times)
-    field_std = section_std(field_times)
+    car_std = section_std(car_times)
     result = {}
-    for section, std in field_std.items():
+    for section, std in car_std.items():
         denominator = reference_std[section] or config.ZERO_STD_REPLACEMENT
         result[section] = (std - reference_std[section]) / denominator
     if not np.isfinite(list(result.values())).all():

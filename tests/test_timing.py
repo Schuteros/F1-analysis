@@ -82,10 +82,12 @@ def test_z_scores_reject_mismatch_and_nan() -> None:
 
 def test_driver_consistency_relative_to_reference() -> None:
     reference = {0: [10.0, 12.0], 1: [5.0, 5.0]}  # std 1.0 and 0.0
-    field = {0: [10.0, 13.0], 1: [4.0, 6.0]}  # std 1.5 and 1.0
-    result = timing.driver_consistency(reference, field)
+    car = {0: [10.0, 13.0], 1: [4.0, 6.0]}  # std 1.5 and 1.0
+    result = timing.driver_consistency(reference, car)
     assert result[0] == pytest.approx(0.5)  # 50 % more spread
     assert result[1] == pytest.approx(1.0)  # zero reference std -> denominator 1
+    # a car steadier than the reference is negative
+    assert timing.driver_consistency({0: [10.0, 12.0]}, {0: [11.0, 11.5]})[0] < 0
 
 
 def test_driver_consistency_rejects_nan() -> None:
