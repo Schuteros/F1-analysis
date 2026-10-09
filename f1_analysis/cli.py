@@ -57,14 +57,14 @@ def run_pipeline(inputs: AnalysisInputs) -> AnalysisResult:
         average["Distance"].to_numpy(dtype=float), average["Speed"].to_numpy(dtype=float)
     ).midpoints
 
-    field_average = timing.calculate_section_times(inputs.field_laps, midpoints)
+    field_times = timing.get_section_times(inputs.field_laps, midpoints)
+    field_average = timing.mean_section_times(field_times)
     consistency = timing.driver_consistency(
-        timing.get_section_times(inputs.compare_laps_quick_first, midpoints),
-        timing.get_section_times(inputs.field_laps, midpoints),
+        timing.get_section_times(inputs.compare_laps_quick_first, midpoints), field_times
     )
 
     def analyse(laps: list[pd.DataFrame]) -> pd.DataFrame:
-        car_average = timing.calculate_section_times(laps, midpoints)
+        car_average = timing.mean_section_times(timing.get_section_times(laps, midpoints))
         z_scores = timing.find_and_normalize_section_times(field_average, car_average)
         return timing.build_performance_table(z_scores, consistency)
 

@@ -25,14 +25,13 @@ def test_section_times_snap_midpoint_to_nearest_sample() -> None:
     assert durations == pytest.approx([5.0, 15.0])
 
 
-def test_get_and_calculate_section_times_agree() -> None:
+def test_get_and_mean_section_times() -> None:
     laps = [_lap(50.0), _lap(100.0)]
     midpoints = np.array([500.0])
     lists = timing.get_section_times(laps, midpoints)
     assert lists[0] == pytest.approx([10.0, 5.0])
     assert lists[1] == pytest.approx([10.0, 5.0])
-    means = timing.calculate_section_times(laps, midpoints)
-    assert means == pytest.approx({0: 7.5, 1: 7.5})
+    assert timing.mean_section_times(lists) == pytest.approx({0: 7.5, 1: 7.5})
 
 
 def test_section_times_validate_input() -> None:
@@ -101,12 +100,11 @@ def test_build_performance_table() -> None:
         timing.build_performance_table({0: 1.0}, {1: 1.0})
 
 
-def test_calculate_and_get_section_times_agree_on_same_input() -> None:
+def test_mean_section_times_is_mean_of_each_sections_laps() -> None:
     rng = np.random.default_rng(0)
     laps = [_lap(float(speed)) for speed in rng.uniform(40.0, 90.0, size=7)]
-    midpoints = np.array([120.0, 310.0, 480.0, 655.0, 800.0, 930.0])
-    lists = timing.get_section_times(laps, midpoints)
-    means = timing.calculate_section_times(laps, midpoints)
+    lists = timing.get_section_times(laps, np.array([120.0, 310.0, 480.0, 655.0, 800.0, 930.0]))
+    means = timing.mean_section_times(lists)
     assert means.keys() == lists.keys()
     for section, values in lists.items():
-        assert means[section] == float(np.mean(values))  # identical, not just close
+        assert means[section] == float(np.mean(values))
