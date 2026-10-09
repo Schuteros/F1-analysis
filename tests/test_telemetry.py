@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from f1_analysis import config, telemetry
+from f1_analysis import telemetry
 from tests import synthetic
 
 
@@ -12,13 +12,10 @@ def _circle(radius: float, n: int = 50) -> tuple[np.ndarray, np.ndarray]:
 
 
 @pytest.mark.parametrize("radius", [5.0, 100.0, 1000.0])
-def test_curvature_of_circle_is_inverse_radius_up_to_documented_factor(radius: float) -> None:
+def test_curvature_of_circle_is_inverse_radius(radius: float) -> None:
     x, y = _circle(radius)
     curvature = telemetry.calculate_curvature(x, y)
-    # True curvature is 1/r. The original code returns 1/(2r) (KNOWN_ISSUES.md).
-    true_curvature = curvature * 4.0 / config.CURVATURE_AREA_FACTOR
-    np.testing.assert_allclose(true_curvature[1:-1], 1.0 / radius, rtol=1e-9)
-    np.testing.assert_allclose(curvature[1:-1], 1.0 / (2.0 * radius), rtol=1e-9)
+    np.testing.assert_allclose(curvature[1:-1], 1.0 / radius, rtol=1e-9)
 
 
 def test_curvature_padding_straight_line_and_duplicates() -> None:

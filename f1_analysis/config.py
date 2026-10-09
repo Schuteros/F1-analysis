@@ -30,16 +30,17 @@ CURVATURE_SMOOTHING_WINDOW_SAMPLES: Final = 7  # samples; Savitzky-Golay window 
 CURVATURE_SMOOTHING_POLYORDER: Final = 2  # polynomial order of the curvature filter
 
 # --- Curvature ----------------------------------------------------------------------------------
-CURVATURE_AREA_FACTOR: Final = 2.0  # multiplies triangle area; true circle curvature needs 4.0
+CURVATURE_AREA_FACTOR: Final = 4.0  # curvature = factor * triangle area / (abc) = 1 / radius
 
-# Thresholds below are nominally "radius < 500 m" but in different units: averaged telemetry has
-# X/Y in decimetres (1/dm), the classifier uses metres (1/m). 0.0002 1/dm == 0.002 1/m.
-# Kept as separate names so the (apparent) mismatch stays visible. Because the curvature
-# function returns 1/(2R) (CURVATURE_AREA_FACTOR), the effective radius cut-off is 250 m.
-CORNER_CURVATURE_THRESHOLD_PER_DM: Final = 0.0002  # 1/dm; find_corners default (radius 5000 dm)
-STRAIGHT_CURVATURE_THRESHOLD_PER_DM: Final = 0.0002  # 1/dm; find_straights default (max curvature)
-SECTIONS_CURVATURE_THRESHOLD_PER_DM: Final = 0.0002  # 1/dm; calculate_sections default
-CLASSIFY_CURVATURE_THRESHOLD_PER_M: Final = 0.002  # 1/m; classifier "is a corner" (radius 500 m)
+# Thresholds are curvature (1/radius) above which a point counts as "corner", all radius < 250 m.
+# Averaged telemetry has X/Y in decimetres (1/dm), the classifier uses metres (1/m):
+# 0.0004 1/dm == 0.004 1/m == radius 250 m. Kept as separate names so the (apparent) mismatch
+# stays visible. (These are twice the pre-fix values, because the curvature function now
+# returns twice what it used to; the radius cut-off is unchanged.)
+CORNER_CURVATURE_THRESHOLD_PER_DM: Final = 0.0004  # 1/dm; find_corners default (radius 2500 dm)
+STRAIGHT_CURVATURE_THRESHOLD_PER_DM: Final = 0.0004  # 1/dm; find_straights default (max curvature)
+SECTIONS_CURVATURE_THRESHOLD_PER_DM: Final = 0.0004  # 1/dm; calculate_sections default
+CLASSIFY_CURVATURE_THRESHOLD_PER_M: Final = 0.004  # 1/m; classifier "is a corner" (radius 250 m)
 
 # --- Corners ----------------------------------------------------------------------------------
 CORNER_GAP_M: Final = 50.0  # m; corners closer than this are merged
