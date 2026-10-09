@@ -62,6 +62,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--old", type=Path, default=ROOT / "reference" / "old")
     parser.add_argument("--new", type=Path, default=ROOT / "reference" / "new")
+    parser.add_argument(
+        "--curvature-scale",
+        type=float,
+        default=1.0,
+        help="factor between new and old Curvature column (2 after the curvature unit fix)",
+    )
     args = parser.parse_args()
     old_dir: Path = args.old
     new_dir: Path = args.new
@@ -120,6 +126,7 @@ def main() -> None:
         Acceleration=sections.calculate_acceleration(average["Distance"], average["Speed"]),
     )
     old_csv = pd.read_csv(old_dir / "average_telemetry.csv")
+    old_csv["Curvature"] *= args.curvature_scale  # intended unit change only; all else unscaled
     if list(old_csv.columns) != list(expected.columns):
         problems.append(
             f"average_telemetry columns {list(old_csv.columns)} != {list(expected.columns)}"

@@ -7,11 +7,9 @@ or a small edit in the named function.
 
 ## A. Results are affected (found while refactoring)
 
-1. **Curvature is half the true value.** `telemetry.calculate_curvature` computes `2*area/(abc)`.
-   For a circle of radius R this gives `1/(2R)`, not `1/R` (true Menger curvature is `4*area/(abc)`).
-   Effect: every curvature threshold selects radii half as large as its comment says
-   (`0.0002 1/dm` really means R < 250 m, not 500 m). Constant: `config.CURVATURE_AREA_FACTOR` (2.0;
-   4.0 would be correct). The unit test checks `1/(2r)` and the factor-4 relation.
+1. ~~**Curvature is half the true value.**~~ **Fixed in `fix-curvature`.** `calculate_curvature`
+   used `2*area/(abc)` (half the true curvature). It now returns `1/R`, and every curvature threshold
+   in `config.py` was doubled so results are identical (radius cut-off 250 m, as before).
 2. **"Consistency" is the same number for both cars.** `calculate_driver_consistency` compares the
    *comparison car's* lap-to-lap spread with the *whole field's* spread. It does not use the analysed
    driver at all, so `analysis_driver` and `analysis_winner` have identical Consistency columns
@@ -36,7 +34,7 @@ or a small edit in the named function.
 
 ## B. Mismatches the brief already listed
 
-8. **Curvature thresholds.** 0.002 (`CLASSIFY_CURVATURE_THRESHOLD_PER_M`, metres) vs 0.0002
+8. **Curvature thresholds.** 0.004 (`CLASSIFY_CURVATURE_THRESHOLD_PER_M`, metres) vs 0.0004
    (`CORNER_/STRAIGHT_/SECTIONS_CURVATURE_THRESHOLD_PER_DM`, decimetres). Same physical value; FastF1
    X/Y are decimetres and the classifier divides by 10. Three per-dm constants exist because three
    functions each had their own default.

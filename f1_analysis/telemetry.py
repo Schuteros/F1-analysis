@@ -39,12 +39,11 @@ def require_finite(frame: pd.DataFrame, columns: Sequence[str], where: str) -> N
 
 
 def calculate_curvature(x: FloatArray, y: FloatArray) -> FloatArray:
-    """Curvature at each point from it and its two neighbours (circle through 3 points).
+    """Curvature (1/radius) at each point from it and its two neighbours.
 
-    A circle through a triangle with sides a, b, c and area A has radius R = abc / (4A).
-    The original code uses ``config.CURVATURE_AREA_FACTOR`` (2) instead of 4, so it returns
-    1 / (2R): half the true curvature. Kept as is, see KNOWN_ISSUES.md.
-    Units are 1/(unit of x, y). Ends are padded with 0; coincident points give 0.
+    A circle through a triangle with sides a, b, c and area A has radius R = abc / (4A), so
+    curvature = 4A / (abc). Units are 1/(unit of x, y). Ends are padded with 0; coincident
+    points (zero side length) give 0.
     """
     if x.shape != y.shape or x.ndim != 1:
         raise ValueError(f"x and y must be 1-D arrays of equal length, got {x.shape} and {y.shape}")
