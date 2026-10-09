@@ -99,3 +99,14 @@ def test_build_performance_table() -> None:
     assert table["Consistency"].tolist() == [0.1, 0.3]
     with pytest.raises(ValueError, match="section numbers differ"):
         timing.build_performance_table({0: 1.0}, {1: 1.0})
+
+
+def test_calculate_and_get_section_times_agree_on_same_input() -> None:
+    rng = np.random.default_rng(0)
+    laps = [_lap(float(speed)) for speed in rng.uniform(40.0, 90.0, size=7)]
+    midpoints = np.array([120.0, 310.0, 480.0, 655.0, 800.0, 930.0])
+    lists = timing.get_section_times(laps, midpoints)
+    means = timing.calculate_section_times(laps, midpoints)
+    assert means.keys() == lists.keys()
+    for section, values in lists.items():
+        assert means[section] == float(np.mean(values))  # identical, not just close
