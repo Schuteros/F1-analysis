@@ -90,17 +90,38 @@ def section_std(section_times: Mapping[int, Sequence[float]]) -> dict[int, float
     return {section: float(np.std(times)) for section, times in section_times.items()}
 
 
-def driver_consistency(
-    reference_times: Mapping[int, Sequence[float]], car_times: Mapping[int, Sequence[float]]
+def field_reference_std(
+    per_driver_times: Mapping[str, Mapping[int, Sequence[float]]],
+    min_laps: int = config.MIN_LAPS_FOR_STD,
 ) -> dict[int, float]:
-    """Relative excess lap-to-lap spread: (std(car) - std(reference)) / std(reference).
+    """Typical lap-to-lap spread (s) per section: median over drivers of each driver's own std.
 
-    0 means as consistent as the reference (the field's pooled laps in the pipeline); 0.2 means
-    20 % more spread. A reference standard deviation of exactly 0 is replaced by
-    ZERO_STD_REPLACEMENT in the denominator.
+    Each driver's std is computed on their own laps, so pace gaps between drivers do not count
+    as inconsistency. Drivers with fewer than ``min_laps`` laps are left out.
     """
-    _require_same_sections(reference_times, car_times, "consistency")
-    reference_std = section_std(reference_times)
+    stds = {
+        driver: section_std(times)
+        for driver, times in per_driver_times.items()
+        if all(len(laps) >= min_laps for laps in times.values())
+    }
+    if not stds:
+        raise ValueError(f"field_reference_std: no driver has at least {min_laps} laps")
+    sections = set.intersection(*(set(driver_std) for driver_std in stds.values()))
+    return {
+        section: float(np.median([driver_std[section] for driver_std in stds.values()]))
+        for section in sorted(sections)
+    }
+
+
+def driver_consistency(
+    reference_std: Mapping[int, float], car_times: Mapping[int, Sequence[float]]
+) -> dict[int, float]:
+    """Relative excess lap-to-lap spread: (std(car) - reference_std) / reference_std.
+
+    0 means as consistent as the reference (the median driver in the pipeline); 0.2 means 20 %
+    more spread. A reference of exactly 0 is replaced by ZERO_STD_REPLACEMENT in the denominator.
+    """
+    _require_same_sections(reference_std, car_times, "consistency")
     car_std = section_std(car_times)
     result = {}
     for section, std in car_std.items():

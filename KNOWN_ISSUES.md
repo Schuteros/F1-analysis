@@ -11,9 +11,10 @@ or a small edit in the named function.
    used `2*area/(abc)` (half the true curvature). It now returns `1/R`, and every curvature threshold
    in `config.py` was doubled so results are identical (radius cut-off 250 m, as before).
 2. ~~**"Consistency" is the same number for both cars.**~~ **Fixed in `fix-consistency`.** Each car
-   is now compared with the field: `(std(car laps) - std(field laps)) / std(field laps)` per section.
-   Caveat: "field" is all drivers' laps pooled, so it also contains between-driver differences in
-   section time and is a wider reference than a single driver's spread.
+   is compared with the median driver: `(std car - median driver std) / median driver std` per
+   section, where each driver's std comes from their own laps (so pace gaps between drivers do not
+   count as inconsistency). Drivers with fewer than `MIN_LAPS_FOR_STD` (8) laps are left out of the
+   median. The car itself and the comparison car are part of the median.
 3. **Lap-picking order differs between call sites.** `pick_accurate().pick_quicklaps()` (main) vs
    `pick_quicklaps().pick_accurate()` (analyze_performance). The quick-lap cut-off is relative to the
    fastest lap in the set, so the order can select different laps. (The third variant, used only by
@@ -68,3 +69,7 @@ or a small edit in the named function.
     `find_and_override_drs_zones`. Moved and tested, not wired in.
 19. **Debug `print`s removed** (curvature statistics, detected straights, acceleration statistics,
     column list). Output text only; no effect on results.
+20. **A section can be labelled "Driver" for inconsistency alone, even when it is not slow.** In
+    `attribution.label_section` any inconsistent section is a problem whatever its z-score. Example
+    in the reference: section 11 (4640-4780 m), z = -0.52 (faster than typical) but HUL's consistency
+    is +1.07 and HAM's is -0.02, so it is labelled Driver. Rule kept as is for now.

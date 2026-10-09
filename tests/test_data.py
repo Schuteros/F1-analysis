@@ -75,3 +75,26 @@ def test_load_lap_telemetries_adds_distance_per_lap() -> None:
     laps = SimpleNamespace(iterrows=lambda: iter([(0, make_lap(1.0)), (1, make_lap(2.0))]))
     result = data.load_lap_telemetries(laps)
     assert [float(frame["Distance"].iloc[0]) for frame in result] == [1.0, 2.0]
+
+
+def test_load_laps_by_driver_groups_telemetry() -> None:
+    class _DriverLaps:
+        def __init__(self, drivers: list[str]) -> None:
+            self.drivers = drivers
+
+        def __getitem__(self, key: str) -> pd.Series:
+            assert key == "Driver"
+            return pd.Series(self.drivers)
+
+        def pick_drivers(self, driver: str) -> SimpleNamespace:
+            lap = SimpleNamespace(
+                get_car_data=lambda: SimpleNamespace(
+                    add_distance=lambda: pd.DataFrame({"Distance": [float(len(driver))]})
+                )
+            )
+            count = self.drivers.count(driver)
+            return SimpleNamespace(iterrows=lambda: iter([(i, lap) for i in range(count)]))
+
+    result = data.load_laps_by_driver(_DriverLaps(["AB", "ABC", "AB"]))
+    assert list(result) == ["AB", "ABC"]
+    assert [len(laps) for laps in result.values()] == [2, 1]

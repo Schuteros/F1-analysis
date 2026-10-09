@@ -42,7 +42,12 @@ def main() -> None:
     # Spreads (s) per section, exactly as the pipeline uses them.
     std_subject = timing.section_std(timing.get_section_times(inputs.subject_laps, midpoints))
     std_compare = timing.section_std(timing.get_section_times(inputs.compare_laps, midpoints))
-    std_field = timing.section_std(timing.get_section_times(inputs.field_laps, midpoints))
+    std_field = timing.field_reference_std(
+        {
+            driver: timing.get_section_times(laps, midpoints)
+            for driver, laps in inputs.field_laps_by_driver.items()
+        }
+    )  # median over drivers of each driver's own std
     # The original reference used the comparison car's laps picked quick-then-accurate.
     old_compare_laps = session.laps.pick_drivers(winner).pick_quicklaps().pick_accurate()
     std_old_ref = timing.section_std(
@@ -69,11 +74,11 @@ def main() -> None:
         f"# Label changes, {DRIVER} vs {winner} (2025 Chinese Sprint)",
         "",
         "Spreads = std of lap times per section (s).",
-        f"Old consistency (identical for both cars) = (std field - std {winner}) / std {winner}.",
-        "New consistency, per car = (std car - std field) / std field.",
+        f"Old consistency (identical for both cars) = (std of all laps pooled - std {winner}) / std {winner}.",
+        "New consistency, per car = (std car - median driver std) / median driver std.",
         "",
         "| Section | Distance (m) | z-score | Old label | New label | std "
-        f"{DRIVER} | std {winner} | std field | Old consistency (both cars) | "
+        f"{DRIVER} | std {winner} | median driver std | Old consistency (both cars) | "
         f"New consistency {DRIVER} | New consistency {winner} |",
         "|---|---|---|---|---|---|---|---|---|---|---|",
     ]

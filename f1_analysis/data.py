@@ -58,6 +58,14 @@ def load_lap_telemetries(laps: Laps) -> list[pd.DataFrame]:
     return [lap.get_car_data().add_distance() for _, lap in laps.iterrows()]
 
 
+def load_laps_by_driver(laps: Laps) -> dict[str, list[pd.DataFrame]]:
+    """Lap telemetry grouped by driver abbreviation."""
+    return {
+        str(driver): load_lap_telemetries(laps.pick_drivers(driver))
+        for driver in laps["Driver"].unique()
+    }
+
+
 def _index_by_session_time(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.copy()
     if not pd.api.types.is_timedelta64_dtype(frame["SessionTime"]):

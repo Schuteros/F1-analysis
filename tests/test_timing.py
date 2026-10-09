@@ -80,19 +80,42 @@ def test_z_scores_reject_mismatch_and_nan() -> None:
         timing.find_and_normalize_section_times({0: 1.0, 1: 2.0}, {0: np.nan, 1: 2.0})
 
 
-def test_driver_consistency_relative_to_reference() -> None:
-    reference = {0: [10.0, 12.0], 1: [5.0, 5.0]}  # std 1.0 and 0.0
+def test_driver_consistency_relative_to_reference_std() -> None:
+    reference_std = {0: 1.0, 1: 0.0}
     car = {0: [10.0, 13.0], 1: [4.0, 6.0]}  # std 1.5 and 1.0
-    result = timing.driver_consistency(reference, car)
+    result = timing.driver_consistency(reference_std, car)
     assert result[0] == pytest.approx(0.5)  # 50 % more spread
     assert result[1] == pytest.approx(1.0)  # zero reference std -> denominator 1
     # a car steadier than the reference is negative
-    assert timing.driver_consistency({0: [10.0, 12.0]}, {0: [11.0, 11.5]})[0] < 0
+    assert timing.driver_consistency({0: 1.0}, {0: [11.0, 11.5]})[0] < 0
 
 
-def test_driver_consistency_rejects_nan() -> None:
+def test_driver_consistency_rejects_nan_and_mismatch() -> None:
     with pytest.raises(ValueError, match="non-finite"):
-        timing.driver_consistency({0: [1.0, 2.0]}, {0: [np.nan, 2.0]})
+        timing.driver_consistency({0: 1.0}, {0: [np.nan, 2.0]})
+    with pytest.raises(ValueError, match="section numbers differ"):
+        timing.driver_consistency({0: 1.0}, {1: [1.0, 2.0]})
+
+
+def test_field_reference_std_is_median_of_each_drivers_own_std() -> None:
+    # Pace gaps between drivers must not count: B is 10 s slower than A but equally steady.
+    steady = [1.0, 2.0, 1.0, 2.0]  # std 0.5
+    per_driver = {
+        "A": {0: steady},
+        "B": {0: [x + 10.0 for x in steady]},
+        "C": {0: [1.0, 5.0, 1.0, 5.0]},  # std 2.0
+    }
+    assert timing.field_reference_std(per_driver, min_laps=4) == {0: pytest.approx(0.5)}
+
+
+def test_field_reference_std_skips_drivers_with_too_few_laps() -> None:
+    per_driver = {
+        "A": {0: [1.0, 2.0, 1.0, 2.0]},  # std 0.5
+        "B": {0: [1.0, 9.0]},  # too few laps, would be std 4.0
+    }
+    assert timing.field_reference_std(per_driver, min_laps=4) == {0: pytest.approx(0.5)}
+    with pytest.raises(ValueError, match="at least 9 laps"):
+        timing.field_reference_std(per_driver, min_laps=9)
 
 
 def test_build_performance_table() -> None:

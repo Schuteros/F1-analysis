@@ -32,7 +32,8 @@ class AnalysisInputs(NamedTuple):
     subject_laps: list[pd.DataFrame]  # the analysed driver
     subject_fastest: data.FastestLapData  # fastest lap of the analysed driver (for X/Y)
     compare_laps: list[pd.DataFrame]  # the comparison car, picked like subject_laps
-    field_laps: list[pd.DataFrame]  # all drivers
+    field_laps: list[pd.DataFrame]  # all drivers, pooled
+    field_laps_by_driver: dict[str, list[pd.DataFrame]]  # same laps, one list per driver
 
 
 class AnalysisResult(NamedTuple):
@@ -56,14 +57,19 @@ def run_pipeline(inputs: AnalysisInputs) -> AnalysisResult:
         average["Distance"].to_numpy(dtype=float), average["Speed"].to_numpy(dtype=float)
     ).midpoints
 
-    field_times = timing.get_section_times(inputs.field_laps, midpoints)
+    reference_std = timing.field_reference_std(
+        {
+            driver: timing.get_section_times(laps, midpoints)
+            for driver, laps in inputs.field_laps_by_driver.items()
+        }
+    )
     field_average = timing.calculate_section_times(inputs.field_laps, midpoints)
 
     def analyse(laps: list[pd.DataFrame]) -> pd.DataFrame:
         car_times = timing.get_section_times(laps, midpoints)
         car_average = timing.calculate_section_times(laps, midpoints)
         z_scores = timing.find_and_normalize_section_times(field_average, car_average)
-        consistency = timing.driver_consistency(field_times, car_times)
+        consistency = timing.driver_consistency(reference_std, car_times)
         return timing.build_performance_table(z_scores, consistency)
 
     subject_analysis = analyse(inputs.subject_laps)
@@ -98,6 +104,7 @@ def load_inputs(session: fastf1.core.Session, driver: str, compare_to: str) -> A
         subject_fastest=data.load_fastest_lap(subject),
         compare_laps=data.load_lap_telemetries(compare),
         field_laps=data.load_lap_telemetries(field),
+        field_laps_by_driver=data.load_laps_by_driver(field),
     )
 
 
