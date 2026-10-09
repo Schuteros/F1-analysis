@@ -30,6 +30,7 @@ f1-analysis --year 2025 --event CHINESE --session Sprint --driver HUL --save-plo
 
 Options: `--compare-to CODE` (default: the winner), `--cache-dir DIR`. Without `--save-plots`
 the figures open in windows. Developers: `pip install -e ".[dev]"`, then `mypy`, `ruff check`, `pytest`.
+Regression check against the saved reference (needs the FastF1 cache): `python scripts/compare_reference.py --old reference/fix-consistency`.
 
 ## Limitations
 

@@ -75,6 +75,10 @@ SLOW_MIN_LENGTH_M: Final = 50.0  # m; shorter slow runs are discarded
 Z_SCORE_PROBLEM_THRESHOLD: Final = 0.75  # z-score; section time is "bad" above this
 CONSISTENCY_PROBLEM_THRESHOLD: Final = 0.2  # relative std excess; "inconsistent" above this
 ZERO_STD_REPLACEMENT: Final = 1.0  # divisor used when a standard deviation is exactly 0
+# Drivers with fewer laps than this are left out of the field's consistency reference. The
+# relative error of a standard deviation from n laps is about 1/sqrt(2(n-1)): 27 % at 8 laps,
+# 50 % at 3. Below 8 it is too noisy to be a reference (and it drops early retirements).
+MIN_LAPS_FOR_STD: Final = 8  # laps
 
 # --- Problem classification (find_general_problems) -------------------------------------------
 HIGH_THROTTLE_THRESHOLD: Final = 90.0  # %; mean throttle above this is "high"

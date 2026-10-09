@@ -47,16 +47,6 @@ def pick_driver_laps(session: Session, driver: str) -> Laps:
     return _require_laps(laps, f"accurate+quick laps of {driver}")
 
 
-def pick_driver_laps_quick_first(session: Session, driver: str) -> Laps:
-    """Driver's quick laps, then accurate laps (the order calculate_driver_consistency used).
-
-    The quick-lap cut-off is relative to the fastest lap in the set, so this order can
-    select different laps from pick_driver_laps.
-    """
-    laps = session.laps.pick_drivers(driver).pick_quicklaps().pick_accurate()
-    return _require_laps(laps, f"quick+accurate laps of {driver}")
-
-
 def pick_field_laps(session: Session) -> Laps:
     """All drivers' quick laps, then accurate laps (the order analyze_performance used)."""
     laps = session.laps.pick_quicklaps().pick_accurate()
@@ -66,6 +56,14 @@ def pick_field_laps(session: Session) -> Laps:
 def load_lap_telemetries(laps: Laps) -> list[pd.DataFrame]:
     """Car telemetry with a Distance column for each lap, in lap order."""
     return [lap.get_car_data().add_distance() for _, lap in laps.iterrows()]
+
+
+def load_laps_by_driver(laps: Laps) -> dict[str, list[pd.DataFrame]]:
+    """Lap telemetry grouped by driver abbreviation."""
+    return {
+        str(driver): load_lap_telemetries(laps.pick_drivers(driver))
+        for driver in laps["Driver"].unique()
+    }
 
 
 def _index_by_session_time(frame: pd.DataFrame) -> pd.DataFrame:

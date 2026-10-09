@@ -1,25 +1,24 @@
 # Known issues
 
-Things in the original `main.py` that look wrong or odd. **None of them were fixed**: the refactor
-keeps the numbers identical (see `scripts/compare_reference.py`). Each item says what the code does
-now and where it lives. Decide what to change later; every item is a one-line change in `config.py`
-or a small edit in the named function.
+Things in the original `main.py` that look wrong or odd. Items marked ~~struck through~~ were fixed
+(branch named in the item, merged into `refactor`); **all others are deliberately unchanged**, so
+results stay identical to the original except where a fix says otherwise. Check with
+`scripts/compare_reference.py` (see README).
 
 ## A. Results are affected (found while refactoring)
 
 1. ~~**Curvature is half the true value.**~~ **Fixed in `fix-curvature`.** `calculate_curvature`
    used `2*area/(abc)` (half the true curvature). It now returns `1/R`, and every curvature threshold
    in `config.py` was doubled so results are identical (radius cut-off 250 m, as before).
-2. **"Consistency" is the same number for both cars.** `calculate_driver_consistency` compares the
-   *comparison car's* lap-to-lap spread with the *whole field's* spread. It does not use the analysed
-   driver at all, so `analysis_driver` and `analysis_winner` have identical Consistency columns
-   (verified in the reference output). Consequence in `attribution.label_section`: if a section is
-   inconsistent, the other car is inconsistent by definition, so the label is always "Car". "Driver"
-   can only come from the slow-but-consistent branch.
-3. **Lap-picking order differs between call sites.** `pick_accurate().pick_quicklaps()` (main),
-   `pick_quicklaps().pick_accurate()` (analyze_performance, consistency). The quick-lap cut-off is
-   relative to the fastest lap in the set, so the order can select different laps. Kept as three
-   functions in `data.py`.
+2. ~~**"Consistency" is the same number for both cars.**~~ **Fixed in `fix-consistency`.** Each car
+   is compared with the median driver: `(std car - median driver std) / median driver std` per
+   section, where each driver's std comes from their own laps (so pace gaps between drivers do not
+   count as inconsistency). Drivers with fewer than `MIN_LAPS_FOR_STD` (8) laps are left out of the
+   median. The car itself and the comparison car are part of the median.
+3. **Lap-picking order differs between call sites.** `pick_accurate().pick_quicklaps()` (main) vs
+   `pick_quicklaps().pick_accurate()` (analyze_performance). The quick-lap cut-off is relative to the
+   fastest lap in the set, so the order can select different laps. (The third variant, used only by
+   the old consistency reference, was removed with the consistency fix.)
 4. **Averaged telemetry is sparse.** X/Y come only from the fastest lap's samples and bins without a
    position are dropped, leaving about one row per 15 m (357 rows for the 5.4 km reference lap).
    Curvature, the 7-sample smoothing and all 10-50 m length thresholds work on that grid.
@@ -72,3 +71,7 @@ or a small edit in the named function.
     `find_and_override_drs_zones`. Moved and tested, not wired in.
 19. **Debug `print`s removed** (curvature statistics, detected straights, acceleration statistics,
     column list). Output text only; no effect on results.
+20. **A section can be labelled "Driver" for inconsistency alone, even when it is not slow.** In
+    `attribution.label_section` any inconsistent section is a problem whatever its z-score. Example
+    in the reference: section 11 (4640-4780 m), z = -0.52 (faster than typical) but HUL's consistency
+    is +1.07 and HAM's is -0.02, so it is labelled Driver. Rule kept as is for now.

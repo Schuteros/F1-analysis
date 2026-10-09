@@ -125,6 +125,7 @@ def main() -> None:
         Curvature=telemetry.smooth_curvature(average["Curvature"].to_numpy(dtype=float)),
         Acceleration=sections.calculate_acceleration(average["Distance"], average["Speed"]),
     )
+    expected.to_csv(new_dir / "average_telemetry.csv", index=False)
     old_csv = pd.read_csv(old_dir / "average_telemetry.csv")
     old_csv["Curvature"] *= args.curvature_scale  # intended unit change only; all else unscaled
     if list(old_csv.columns) != list(expected.columns):
@@ -144,6 +145,8 @@ def main() -> None:
     cli.make_plots(result, plot_dir)
     for i, name in enumerate(PLOT_NAMES):
         old_png = old_dir / f"plot_{i:02d}.png"
+        if not old_png.exists():  # reference written by this script uses plot names
+            old_png = old_dir / f"{name}.png"
         new_png = plot_dir / f"{name}.png"
         same = old_png.read_bytes() == new_png.read_bytes()
         print(
@@ -153,7 +156,7 @@ def main() -> None:
     print()
     if problems:
         print(f"{len(problems)} DIFFERENCE(S):")
-        for line in problems[:50]:
+        for line in problems:
             print("  ", line)
         raise SystemExit(1)
     print("All numbers match the reference.")

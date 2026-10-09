@@ -8,17 +8,24 @@ from tests import synthetic
 
 
 def _inputs() -> cli.AnalysisInputs:
+    n_laps = config.MIN_LAPS_FOR_STD
+    scales = [0.97, 1.0, 1.03, 0.99]
     subject = [
-        synthetic.make_lap_telemetry(offset_m=k * 0.5, speed_scale=s)
-        for k, s in enumerate([0.97, 1.0, 1.03])
+        synthetic.make_lap_telemetry(offset_m=k * 0.5, speed_scale=scales[k % len(scales)])
+        for k in range(n_laps)
     ]
-    compare = [synthetic.make_lap_telemetry(offset_m=k * 0.5, speed_scale=1.05) for k in range(3)]
+    compare = [
+        synthetic.make_lap_telemetry(offset_m=k * 0.5, speed_scale=1.05) for k in range(n_laps)
+    ]
+    steady = [
+        synthetic.make_lap_telemetry(offset_m=k * 0.5, speed_scale=1.0) for k in range(n_laps)
+    ]
     return cli.AnalysisInputs(
         subject_laps=subject,
         subject_fastest=synthetic.make_fastest_lap(subject[1]),
         compare_laps=compare,
-        compare_laps_quick_first=compare,
-        field_laps=subject + compare,
+        field_laps=subject + compare + steady,
+        field_laps_by_driver={"AAA": subject, "BBB": compare, "CCC": steady},
     )
 
 
@@ -89,3 +96,12 @@ def test_parse_args_reads_options() -> None:
         ]
     )
     assert (args.year, args.compare_to, args.save_plots) == (2024, "NOR", Path("out"))
+
+
+def test_each_car_gets_its_own_consistency() -> None:
+    result = cli.run_pipeline(_inputs())
+    subject = result.subject_analysis["Consistency"]
+    compare = result.compare_analysis["Consistency"]
+    assert not subject.equals(compare)
+    # subject laps vary in speed from lap to lap, the comparison car's do not
+    assert subject.mean() > compare.mean()
