@@ -38,9 +38,11 @@ or a small edit in the named function.
    (`CORNER_/STRAIGHT_/SECTIONS_CURVATURE_THRESHOLD_PER_DM`, decimetres). Same physical value; FastF1
    X/Y are decimetres and the classifier divides by 10. Three per-dm constants exist because three
    functions each had their own default.
-9. **`calculate_section_times` and `get_section_times`** were copies. Differences: the first returns
-   the mean per section (and silently 0 for an empty list); the second returns the per-lap lists.
-   Both kept; the first now calls the second and raises on empty input.
+9. ~~**`calculate_section_times` and `get_section_times`** were copies.~~ **Resolved in
+   `dedupe-section-times`.** A test showed the first was exactly the mean of the second (identical
+   floats on 7 synthetic laps, 7 sections). `calculate_section_times` is deleted; `get_section_times`
+   stays and `mean_section_times` averages its output. The pipeline used both (means for z-scores,
+   lists for consistency), so it now computes the lists once per group.
 10. **`find_braking_zones` default `gap_threshold=00`** (0). Zones are merged only if they touch or
     overlap. `config.BRAKING_GAP_M`.
 11. **`main()` only plotted sections.** The car-vs-driver pipeline was never called. The CLI now runs

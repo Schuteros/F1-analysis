@@ -45,17 +45,9 @@ def get_section_times(
     return {section: [lap[section] for lap in per_lap] for section in range(len(midpoints) + 1)}
 
 
-def calculate_section_times(
-    lap_telemetries: Sequence[pd.DataFrame], midpoints: FloatArray
-) -> dict[int, float]:
-    """Mean section duration (s) over laps: ``{section: mean}``.
-
-    Same numbers as the mean of get_section_times. The original two functions were copies
-    differing only in this final averaging (and a silent 0 for an empty list); both are kept,
-    see KNOWN_ISSUES.md.
-    """
-    times = get_section_times(lap_telemetries, midpoints)
-    return {section: float(np.mean(values)) for section, values in times.items()}
+def mean_section_times(section_times: Mapping[int, Sequence[float]]) -> dict[int, float]:
+    """Mean section duration (s) over laps, from get_section_times output."""
+    return {section: float(np.mean(times)) for section, times in section_times.items()}
 
 
 def _require_same_sections(a: Mapping[int, object], b: Mapping[int, object], where: str) -> None:

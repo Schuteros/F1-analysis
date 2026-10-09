@@ -100,7 +100,7 @@ def main() -> None:
             True,
         ),
         "section_times_avg": (
-            timing.calculate_section_times(inputs.subject_laps, midpoints),
+            timing.mean_section_times(timing.get_section_times(inputs.subject_laps, midpoints)),
             False,
         ),
         "section_times_raw": (timing.get_section_times(inputs.subject_laps, midpoints), False),
